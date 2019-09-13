@@ -1,0 +1,174 @@
+#################################################
+##   - Nile University                         ##
+##   - Bioinformatics diploma                  ##
+##   - Programming_course                      ##
+##   - programming_project                     ##
+##   - Project 4                               ##
+##   - Script name:                            ##
+##      "RBP_Prob_prediction.py"               ##
+##   - Date: 31th May 2019                     ##
+##   - copyright:                              ##
+##       Asmaa Abdel Magid El Neanai           ##
+##       Maha Ibrahim Abdel Aleem              ##
+##       Manar Hashem                          ##
+##       Nada Gamal Ibrahim Eldawy             ##
+##       Phoebe Magdy Abd El Massieh           ##
+#################################################
+
+## Aim of the programme:
+'''
+This programme is used to parse a FASTA file for searching sequence motifs and getting the location of the motif hits,
+for the purpose of determining the single-strandedness probabilities of the motif hits.
+'''
+
+## User Guidlines:
+'''
+# i- Install ViennaRNA package using the instructions presented in ViennaRNA Package 2 documentation link: https://www.tbi.univie.ac.at/RNA/documentation.html
+# ii- write 6 arguments:
+## four of them are input:
+1) the path of the RNAplfold programme (from ViennaRNA Package 2),
+2) the name of the FASTA file,
+3) the name of the motif's txt file,
+4) the number of base-pairs that is located before and after the motif,
+
+## two of them are the outputs:
+5) the name of the output file that contains four columns for the sequence ID, motif's start position, motif's end position and the motifs upaired probabitlities.
+6) the name of the histogram figure for the motifs unpaired probabilities frequencies that will be illustrated when running the script and saved by the name and extension the user write.
+'''
+##################################################
+
+# An example command to run the programme:
+'''
+ex1: python  script_name.py "arg1_the path of the RNAplfold programme"  arg2_seq.fasta arg3_motif_seq.txt arg4.no of_bp before_after_motif arg5_output.txt arg6_fig_name
+
+ex2: python  RBP_Prob_prediction.py "/usr/local/bin/"  filtered_hg38_85_pc_wo_low_omega_singleexon.fasta CaceresHurstESEs_INT3.txt 70 Data_sheet.txt histogram.png
+'''
+#################################################
+
+# import the modules and the packages
+
+import Bio.SeqIO
+import re
+import sys
+import os
+import glob
+import subprocess
+import matplotlib.pyplot as plt
+import numpy as np
+##################################################
+
+#*********************************
+def DeL_AllFiles ( Extension ):
+    '''
+    Remove files
+    : param  Extension: string which is the extension of the file
+    '''
+    for file in glob.glob(Extension):
+        os.remove(file)
+
+def Execute_RNAplfold(motif_len, Sequence):
+    '''
+    Execute the RNaplfold programme within the script
+    : param motif_len: the length of the motif (string)
+    : param Sequence: the sequence which is the input of the RNAplfold programme
+    : return: the motifs unpaired probabilities
+    '''
+# The RNAplfold is programme from the ViennaRNA Package. It predicate the RNA secondary structure, using -u option make it possible to Compute the mean probability that regions of length 1 to a given length are unpaired. The output of this process is saved in a _lunp file. (default=‘31’)
+    out = subprocess.Popen([path + 'RNAplfold', '-u', motif_len], shell=False, universal_newlines=True, stdin=subprocess.PIPE, stderr=subprocess.STDOUT)
+    out.communicate(Sequence)
+
+    lunp_file = open("plfold_lunp", 'r').read().split("\n")
+    Prob_motif_unpaired = (str(lunp_file[no_bps + len(motif)]).split("\t"))[(len(motif))]   # no_bps: variable to specify the number of base paires before and after the motif sequence
+    return Prob_motif_unpaired
+
+def Histogram (List, Fig_name ):
+    '''
+    Plot and save a histogram figure
+    : param List: list of the unpaired probabilities
+    : param Fig_name: variable to specify the name of output figure 
+    '''
+    data = np.array(List, dtype=float)
+    plt.figure()
+    plt.hist(data)
+    plt.title("Probability Distribution")
+    plt.xlabel('Probabilities')
+    plt.ylabel('Frequency')
+    plt.savefig(Fig_name)
+
+#*********************************
+
+# 0- Getting the RNAplfold programme path: the first input argument
+
+path =sys.argv[1]
+
+# 1- Parsing the FASTA file containing the sequences by using seqIO module and get list of SeqRecords: the second input argument
+fasta_list = list(Bio.SeqIO.parse(sys.argv[2], "fasta"))
+
+
+# 2- Opening and reading in the text file containing the motifs and convert it into list of strings: the third input argument
+motifs_list = open(sys.argv[3], "r").read().split('\n')
+
+
+# 3- The number of bps before and after the motif sequence: the fourth input argument
+no_bps=int(sys.argv[4])
+
+
+# 4- The output.txt file:the fifth argument (the first output argument)
+Output=open(sys.argv[5], 'w')
+
+# 5- Initiation of the output variable that contain 4 columns the header of each one indicate: Seq_ID, Start motif's postion, end postion, and the probabily of being unpaired
+Final_4columns= "Seq_ID" + "\t" +"Start pos." + "\t" + "End pos." + "\t"+"Probability" + "\n"
+
+# 6- Intiation of a list containing the motif unpaired probability
+Prob_motif_unpaired_list=[]
+
+# 7 - Intiation of a Sequence containing the motif and a sequence of bps (that its number given by the user) before and after it
+
+Target_Seq =""
+
+# 8- Remove  _lunp and .ps files remains from the previous execution of RNAplfold programme by calling the DeL_AllFiles function.
+# The reason for removing these files is: if there is an error in running the RNAplfold programm that leads it to not forming a new _lunp file that overwrites the old file if present, the user will not parse the old file.
+
+DeL_AllFiles("*_lunp")
+DeL_AllFiles("*.ps")
+
+# 9- creating & running three nested loops
+
+# 9.i- Looping over the list of the fasta file
+for seq_record in fasta_list:
+
+    # Making two variables, one contains the seq record ids only & the other contains the sequences only
+    Id = seq_record.id
+    Sequence = str(seq_record.seq)
+
+# 9.ii- Looping over the motifs list file
+# 9.iii. Looping over the sequences file for finding & determining the motifs and their start & end locations by using regular expression (re.finditer()) and "match" function
+    for motif in motifs_list:
+        for match in re.finditer(motif, Sequence):
+            motifs_start = match.start()
+            motifs_end = match.end()
+
+            Seqs_before=Sequence[motifs_start-no_bps:motifs_start]
+            Seqs_after=Sequence[motifs_end:motifs_end+no_bps]
+
+            if(len(Seqs_before) < no_bps  or   len(Seqs_after) < no_bps ):
+                continue
+            else:
+                Target_Seq = Sequence[motifs_start - no_bps: motifs_end + no_bps]
+
+
+
+# 10- The RNAplfold programme is executed by calling the Execute_RNAplfold function to determine the probabilitiy of motif being unpaired
+#/usr/local/bin/
+                Prob_motif_unpaired= Execute_RNAplfold(str((len(motif))), Target_Seq)
+                Prob_motif_unpaired_list.append(Prob_motif_unpaired)
+
+
+# 11- Fill the out variable
+                Final_4columns = Final_4columns + (Id + "\t" + str(motifs_start) + "\t" + str(motifs_end) + "\t" + Prob_motif_unpaired  + "\n")
+
+Output.write(Final_4columns + "\n")
+Output.close()
+
+# 12- Plot and save the histogram figure for the motif unpaired probabilities by calling the Histogram function
+Histogram(Prob_motif_unpaired_list , sys.argv[6])   # the name of the figure of supported formats: eps, pdf, pgf, png, ps, raw, rgba, svg, svgz: the sixth argument (the second output argument)
